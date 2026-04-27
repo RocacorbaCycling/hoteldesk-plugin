@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HotelDesk AI</title>
+<script src="https://unpkg.com/front-plugin-sdk/dist/front.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    background: #fafaf9;
+    color: #1a1a18;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .header {
+    background: #1a1a18;
+    color: #c8a96e;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header-title { font-size: 13px; letter-spacing: 0.05em; flex: 1; }
+  .header-dot { width: 6px; height: 6px; border-radius: 50%; background: #c8a96e; }
+
+  .section {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e8e6e0;
+  }
+
+  .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7a7870;
+    margin-bottom: 6px;
+  }
+
+  .guest-card {
+    background: #fff;
+    border: 1px solid #e0ddd6;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .guest-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .guest-detail { font-size: 11px; color: #7a7870; line-height: 1.6; }
+  .guest-detail strong { color: #1a1a18; font-weight: 500; }
+
+  .no-guest {
+    font-size: 12px;
+    color: #7a7870;
+    font-style: italic;
+    padding: 6px 0;
+  }
+
+  .context-box {
+    background: #fff;
+    border: 1px solid #e0ddd6;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: #4a4a48;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  textarea {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #e0ddd6;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    color: #1a1a18;
+    line-height: 1.7;
+    resize: vertical;
+    min-height: 160px;
+    outline: none;
+  }
+  textarea:focus { border-color: #c8a96e; }
+
+  .btn {
+    width: 100%;
+    padding: 9px 14px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: opacity 0.15s;
+    border: none;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary {
+    background: #1a1a18;
+    color: #c8a96e;
+  }
+  .btn-secondary {
+    background: #fff;
+    color: #1a1a18;
+    border: 1px solid #d0cec8;
+    margin-top: 6px;
+  }
+  .btn-insert {
+    background: #2d6a4f;
+    color: #fff;
+    margin-top: 6px;
+  }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 12px;
+    color: #7a7870;
+  }
+  .spinner {
+    width: 13px; height: 13px;
+    border: 1.5px solid #e0ddd6;
+    border-top-color: #c8a96e;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status {
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+  .status-ok  { background: #d4edda; color: #1a5c2e; }
+  .status-err { background: #fde8e8; color: #7a1a1a; }
+
+  .config-input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #e0ddd6;
+    border-radius: 5px;
+    font-size: 12px;
+    font-family: inherit;
+    background: #fff;
+    color: #1a1a18;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .config-input:focus { border-color: #c8a96e; }
+
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid #e8e6e0;
+    background: #fff;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 6px;
+    text-align: center;
+    font-size: 11px;
+    color: #7a7870;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    letter-spacing: 0.03em;
+  }
+  .tab.active { color: #1a1a18; border-bottom-color: #c8a96e; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="header-dot"></span>
+  <span class="header-title">HotelDesk AI</span>
+  <span id="conn-dot" style="width:6px;height:6px;border-radius:50%;background:#555;flex-shrink:0;" title="Connection status"></span>
+</div>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab('compose')">✦ Compose</div>
+  <div class="tab" onclick="showTab('guest')">◈ Guest</div>
+  <div class="tab" onclick="showTab('settings')">⚙ Settings</div>
+</div>
+
+<!-- ── COMPOSE TAB ── -->
+<div id="tab-compose">
+  <div class="section">
+    <div class="label">Current conversation</div>
+    <div id="conv-info" class="no-guest">Loading conversation…</div>
+  </div>
+
+  <div class="section">
+    <div class="label">Sheet context</div>
+    <div id="sheet-context" class="context-box" style="display:none;"></div>
+    <div id="sheet-loading" class="loading" style="display:none;">
+      <div class="spinner"></div> Looking up guest in calendar…
+    </div>
+    <div id="sheet-none" class="no-guest">No sheet context loaded yet.</div>
+  </div>
+
+  <div class="section">
+    <div class="label">AI draft reply</div>
+    <div id="draft-loading" class="loading" style="display:none;">
+      <div class="spinner"></div> Drafting reply with Claude…
+    </div>
+    <textarea id="draft-text" placeholder="Click 'Generate Reply' to draft a response…"></textarea>
+    <button class="btn btn-primary" onclick="generateReply()" id="gen-btn">✦ Generate Reply</button>
+    <button class="btn btn-insert" onclick="insertReply()" id="insert-btn" style="display:none;">↑ Insert into Front composer</button>
+    <button class="btn btn-secondary" onclick="generateReply()" id="regen-btn" style="display:none;">↻ Regenerate</button>
+  </div>
+</div>
+
+<!-- ── GUEST TAB ── -->
+<div id="tab-guest" style="display:none;">
+  <div class="section">
+    <div class="label">Guest details from calendar</div>
+    <div id="guest-card-wrap">
+      <div class="no-guest">Open a conversation to load guest info.</div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="label">Manual lookup</div>
+    <input class="config-input" id="manual-name" placeholder="Enter guest surname…" />
+    <button class="btn btn-primary" onclick="manualLookup()">Look up in sheet</button>
+    <div id="manual-result" style="margin-top:8px;"></div>
+  </div>
+</div>
+
+<!-- ── SETTINGS TAB ── -->
+<div id="tab-settings" style="display:none;">
+  <div class="section">
+    <div class="label">Apps Script URL</div>
+    <input class="config-input" id="cfg-script" placeholder="https://script.google.com/macros/s/…/exec" />
+    <div style="font-size:10px;color:#7a7870;margin-bottom:8px;">From your Google Sheet → Extensions → Apps Script → Deploy</div>
+    <button class="btn btn-primary" onclick="testConnection()">Test connection</button>
+    <div id="conn-status"></div>
+  </div>
+  <div class="section">
+    <div class="label">Hotel name (for AI context)</div>
+    <input class="config-input" id="cfg-hotel" placeholder="e.g. Can Marti Rural Hotel" />
+  </div>
+  <div class="section">
+    <div class="label">Reply language</div>
+    <select class="config-input" id="cfg-lang">
+      <option value="English">English</option>
+      <option value="Spanish">Spanish</option>
+      <option value="Catalan">Catalan</option>
+      <option value="French">French</option>
+      <option value="German">German</option>
+    </select>
+  </div>
+  <div class="section">
+    <div class="label">Email tone</div>
+    <select class="config-input" id="cfg-tone">
+      <option value="warm and personal">Warm & personal</option>
+      <option value="professional and formal">Professional & formal</option>
+      <option value="friendly and casual">Friendly & casual</option>
+    </select>
+  </div>
+  <div class="section">
+    <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+    <div id="save-status"></div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────
+var state = {
+  conversation: null,
+  guestContext: null,
+  draft: "",
+  settings: {
+    scriptUrl: "",
+    hotelName: "our hotel",
+    language: "English",
+    tone: "warm and personal"
+  }
+};
+
+// ── Init ─────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  loadSettings();
+
+  // Front SDK — listen for conversation changes
+  if (window.Front) {
+    Front.contextUpdates.subscribe(function(update) {
+      if (update.type === 'conversation') {
+        state.conversation = update.conversation;
+        onConversationLoaded(update.conversation);
+      }
+    });
+  } else {
+    // Dev mode fallback
+    document.getElementById('conv-info').textContent = 'Front SDK not detected (dev mode)';
+  }
+});
+
+function onConversationLoaded(conv) {
+  if (!conv) return;
+
+  // Show conversation info
+  var from = conv.contact ? (conv.contact.name || conv.contact.handle || 'Unknown') : 'Unknown';
+  var subject = conv.subject || '(no subject)';
+  document.getElementById('conv-info').innerHTML =
+    '<strong>' + escHtml(from) + '</strong><br>' +
+    '<span style="color:#7a7870;font-size:11px;">' + escHtml(subject) + '</span>';
+
+  // Auto-lookup guest in sheet
+  lookupGuest(from);
+}
+
+// ── Tab switching ────────────────────────────────────────────
+function showTab(name) {
+  ['compose','guest','settings'].forEach(function(t) {
+    document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach(function(el, i) {
+    el.classList.toggle('active', ['compose','guest','settings'][i] === name);
+  });
+}
+
+// ── Settings ─────────────────────────────────────────────────
+function saveSettings() {
+  state.settings.scriptUrl = document.getElementById('cfg-script').value.trim();
+  state.settings.hotelName = document.getElementById('cfg-hotel').value.trim() || 'our hotel';
+  state.settings.language  = document.getElementById('cfg-lang').value;
+  state.settings.tone      = document.getElementById('cfg-tone').value;
+  localStorage.setItem('hoteldesk_settings', JSON.stringify(state.settings));
+  document.getElementById('save-status').innerHTML = '<div class="status status-ok">✓ Saved</div>';
+  setTimeout(function() { document.getElementById('save-status').innerHTML = ''; }, 2000);
+}
+
+function loadSettings() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('hoteldesk_settings') || '{}');
+    if (saved.scriptUrl) state.settings.scriptUrl = saved.scriptUrl;
+    if (saved.hotelName) state.settings.hotelName = saved.hotelName;
+    if (saved.language)  state.settings.language  = saved.language;
+    if (saved.tone)      state.settings.tone       = saved.tone;
+    document.getElementById('cfg-script').value = state.settings.scriptUrl;
+    document.getElementById('cfg-hotel').value  = state.settings.hotelName !== 'our hotel' ? state.settings.hotelName : '';
+    document.getElementById('cfg-lang').value   = state.settings.language;
+    document.getElementById('cfg-tone').value   = state.settings.tone;
+  } catch(e) {}
+}
+
+// ── Connection test ──────────────────────────────────────────
+function testConnection() {
+  var url = document.getElementById('cfg-script').value.trim();
+  if (!url) { showConnStatus(false, 'Enter your Apps Script URL first.'); return; }
+  state.settings.scriptUrl = url;
+  fetch(url + '?action=ping')
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      var ok = j && j.data && j.data.message;
+      showConnStatus(ok, ok ? ('✓ ' + j.data.message) : '✗ Unexpected response');
+      document.getElementById('conn-dot').style.background = ok ? '#2d6a4f' : '#c0392b';
+    })
+    .catch(function() { showConnStatus(false, '✗ Could not reach Apps Script. Check URL and deployment.'); });
+}
+
+function showConnStatus(ok, msg) {
+  document.getElementById('conn-status').innerHTML =
+    '<div class="status ' + (ok ? 'status-ok' : 'status-err') + '">' + escHtml(msg) + '</div>';
+}
+
+// ── Guest lookup ─────────────────────────────────────────────
+function lookupGuest(name) {
+  if (!state.settings.scriptUrl || !name) return;
+
+  // Extract likely surname (last word, or first word if single name)
+  var parts = name.trim().split(/\s+/);
+  var surname = parts[parts.length - 1];
+
+  document.getElementById('sheet-none').style.display   = 'none';
+  document.getElementById('sheet-context').style.display = 'none';
+  document.getElementById('sheet-loading').style.display = 'flex';
+
+  fetch(state.settings.scriptUrl + '?action=guestLookup&name=' + encodeURIComponent(surname))
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      document.getElementById('sheet-loading').style.display = 'none';
+      if (j && j.data && j.data.found) {
+        state.guestContext = j.data;
+        renderGuestContext(j.data);
+      } else {
+        document.getElementById('sheet-none').style.display = 'block';
+        document.getElementById('sheet-none').textContent = 'Guest "' + surname + '" not found in calendar.';
+        state.guestContext = null;
+        renderGuestCard(null);
+      }
+    })
+    .catch(function() {
+      document.getElementById('sheet-loading').style.display = 'none';
+      document.getElementById('sheet-none').style.display = 'block';
+      document.getElementById('sheet-none').textContent = 'Could not reach sheet. Check settings.';
+    });
+}
+
+function renderGuestContext(data) {
+  var lines = [];
+  if (data.room)     lines.push('Room: ' + data.room);
+  if (data.group)    lines.push('Group: ' + data.group);
+  if (data.checkIn)  lines.push('Check-in: ' + data.checkIn);
+  if (data.checkOut) lines.push('Check-out: ' + data.checkOut);
+  if (data.notes)    lines.push('Notes: ' + data.notes);
+
+  var box = document.getElementById('sheet-context');
+  box.textContent = lines.join('\n');
+  box.style.display = 'block';
+  renderGuestCard(data);
+}
+
+function renderGuestCard(data) {
+  var wrap = document.getElementById('guest-card-wrap');
+  if (!data) {
+    wrap.innerHTML = '<div class="no-guest">No guest found in calendar.</div>';
+    return;
+  }
+  wrap.innerHTML =
+    '<div class="guest-card">' +
+    '<div class="guest-name">' + escHtml(data.name || 'Guest') + '</div>' +
+    '<div class="guest-detail">' +
+    (data.room     ? '<strong>Room:</strong> '      + escHtml(data.room)     + '<br>' : '') +
+    (data.group    ? '<strong>Group:</strong> '     + escHtml(data.group)    + '<br>' : '') +
+    (data.checkIn  ? '<strong>Check-in:</strong> '  + escHtml(data.checkIn)  + '<br>' : '') +
+    (data.checkOut ? '<strong>Check-out:</strong> ' + escHtml(data.checkOut) + '<br>' : '') +
+    (data.nights   ? '<strong>Nights:</strong> '    + escHtml(String(data.nights)) + '<br>' : '') +
+    (data.notes    ? '<strong>Notes:</strong> '     + escHtml(data.notes)    : '') +
+    '</div></div>';
+}
+
+function manualLookup() {
+  var name = document.getElementById('manual-name').value.trim();
+  if (!name) return;
+  document.getElementById('manual-result').innerHTML = '<div class="loading"><div class="spinner"></div> Looking up…</div>';
+  if (!state.settings.scriptUrl) {
+    document.getElementById('manual-result').innerHTML = '<div class="status status-err">No Apps Script URL in settings.</div>';
+    return;
+  }
+  fetch(state.settings.scriptUrl + '?action=guestLookup&name=' + encodeURIComponent(name))
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      if (j && j.data && j.data.found) {
+        state.guestContext = j.data;
+        renderGuestCard(j.data);
+        document.getElementById('manual-result').innerHTML = '<div class="status status-ok">✓ Found in calendar</div>';
+        renderGuestContext(j.data);
+        showTab('compose');
+      } else {
+        document.getElementById('manual-result').innerHTML = '<div class="status status-err">Not found in calendar.</div>';
+      }
+    })
+    .catch(function() {
+      document.getElementById('manual-result').innerHTML = '<div class="status status-err">Error reaching sheet.</div>';
+    });
+}
+
+// ── Generate reply ───────────────────────────────────────────
+function generateReply() {
+  if (!state.conversation) {
+    alert('No conversation loaded. Open an email in Front first.');
+    return;
+  }
+
+  document.getElementById('gen-btn').disabled = true;
+  document.getElementById('draft-loading').style.display = 'flex';
+  document.getElementById('insert-btn').style.display = 'none';
+  document.getElementById('regen-btn').style.display = 'none';
+
+  var conv = state.conversation;
+  var guestName  = conv.contact ? (conv.contact.name || conv.contact.handle || '') : '';
+  var subject    = conv.subject || '';
+  var lastMsg    = '';
+
+  // Get the latest message text if available
+  if (conv.messages && conv.messages.length > 0) {
+    var msgs = conv.messages;
+    var last = msgs[msgs.length - 1];
+    lastMsg = last.text || last.body || '';
+  }
+
+  var ctxLines = [];
+  if (state.guestContext && state.guestContext.found) {
+    var g = state.guestContext;
+    if (g.room)     ctxLines.push('Room: ' + g.room);
+    if (g.group)    ctxLines.push('Property section: ' + g.group);
+    if (g.checkIn)  ctxLines.push('Check-in: ' + g.checkIn);
+    if (g.checkOut) ctxLines.push('Check-out: ' + g.checkOut);
+    if (g.notes)    ctxLines.push('Notes from calendar: ' + g.notes);
+  }
+
+  var prompt =
+    'You are the front desk manager at ' + state.settings.hotelName + ', a rural boutique hotel. ' +
+    'Write a ' + state.settings.tone + ' reply email to a guest in ' + state.settings.language + '.\n\n' +
+    'Guest: ' + guestName + '\n' +
+    'Email subject: ' + subject + '\n' +
+    (lastMsg ? 'Guest message:\n"""\n' + lastMsg.substring(0, 800) + '\n"""\n\n' : '') +
+    (ctxLines.length > 0 ? 'Booking info from our system:\n' + ctxLines.join('\n') + '\n\n' : 'No booking found in system for this guest.\n\n') +
+    'Instructions:\n' +
+    '- Be ' + state.settings.tone + ', never robotic\n' +
+    '- Keep it concise (under 150 words)\n' +
+    '- Address the guest by first name if known\n' +
+    '- Sign off as "The Front Desk Team"\n' +
+    '- Write only the email body, no subject line\n' +
+    '- If booking info is available, reference it naturally\n' +
+    '- If no booking info, still be helpful and warm';
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(j) {
+    document.getElementById('draft-loading').style.display = 'none';
+    document.getElementById('gen-btn').disabled = false;
+    var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate reply.';
+    document.getElementById('draft-text').value = text;
+    state.draft = text;
+    document.getElementById('insert-btn').style.display = 'block';
+    document.getElementById('regen-btn').style.display = 'block';
+  })
+  .catch(function(err) {
+    document.getElementById('draft-loading').style.display = 'none';
+    document.getElementById('gen-btn').disabled = false;
+    document.getElementById('draft-text').value = 'Error: ' + err.message;
+  });
+}
+
+// ── Insert into Front composer ───────────────────────────────
+function insertReply() {
+  var text = document.getElementById('draft-text').value;
+  if (!text) return;
+  if (window.Front) {
+    Front.compose.setDraft({ content: text });
+  } else {
+    // Fallback: copy to clipboard
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = document.getElementById('insert-btn');
+      btn.textContent = '✓ Copied to clipboard';
+      setTimeout(function() { btn.textContent = '↑ Insert into Front composer'; }, 2000);
+    });
+  }
+}
+
+// ── Utilities ────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
