@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HotelDesk AI</title>
+<script src="https://frontapp.com/libs/plugin-sdk/1.0.0/front.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #fafaf9; color: #1a1a18; height: 100vh; overflow-y: auto; }
@@ -32,7 +33,7 @@
   .tab-bar { display: flex; border-bottom: 1px solid #e8e6e0; background: #fff; }
   .tab { flex: 1; padding: 9px 6px; text-align: center; font-size: 11px; color: #7a7870; cursor: pointer; border-bottom: 2px solid transparent; }
   .tab.active { color: #1a1a18; border-bottom-color: #c8a96e; }
-  .guest-card { background:#fff; border:1px solid #e0ddd6; border-radius:6px; padding:10px 12px; font-size:11px; line-height:1.7; }
+  .guest-card { background:#fff; border:1px solid #e0ddd6; border-radius:6px; padding:10px 12px; font-size:11px; line-height:1.8; }
   .guest-card strong { color:#1a1a18; }
 </style>
 </head>
@@ -41,7 +42,7 @@
 <div class="header">
   <span class="dot"></span>
   <span class="header-title">HotelDesk AI</span>
-  <span id="sdk-dot" class="dot" style="background:#aaa;" title="SDK status"></span>
+  <span id="sdk-dot" class="dot" style="background:#aaa;"></span>
 </div>
 
 <div class="tab-bar">
@@ -54,20 +55,20 @@
 <div id="tab-compose">
   <div class="section">
     <div class="label">Current conversation</div>
-    <div id="conv-info" class="no-guest">Waiting for Front SDK…</div>
+    <div id="conv-info" class="no-guest">Waiting for conversation…</div>
   </div>
   <div class="section">
     <div class="label">Guest info from calendar</div>
-    <div id="sheet-loading" class="loading" style="display:none;"><div class="spinner"></div> Looking up guest in calendar…</div>
+    <div id="sheet-loading" class="loading" style="display:none;"><div class="spinner"></div> Looking up guest…</div>
     <div id="sheet-context" class="context-box" style="display:none;"></div>
-    <div id="sheet-none" class="no-guest" style="display:none;">Guest not found in calendar.</div>
+    <div id="sheet-none" class="no-guest">No guest context yet.</div>
   </div>
   <div class="section">
     <div class="label">AI draft reply</div>
-    <div id="draft-loading" class="loading" style="display:none;"><div class="spinner"></div> Drafting reply with Claude…</div>
+    <div id="draft-loading" class="loading" style="display:none;"><div class="spinner"></div> Drafting with Claude…</div>
     <textarea id="draft-text" placeholder="Click Generate Reply to draft a response…"></textarea>
     <button class="btn btn-primary" id="gen-btn" onclick="generateReply()">✦ Generate Reply</button>
-    <button class="btn btn-green" id="insert-btn" onclick="insertReply()" style="display:none;">↑ Insert into Front composer</button>
+    <button class="btn btn-green" id="insert-btn" onclick="insertReply()" style="display:none;">↑ Insert into composer</button>
     <button class="btn btn-secondary" id="regen-btn" onclick="generateReply()" style="display:none;">↻ Regenerate</button>
   </div>
 </div>
@@ -117,6 +118,10 @@
     <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
     <div id="save-status"></div>
   </div>
+  <div class="section">
+    <div class="label">Debug info</div>
+    <div id="debug-info" style="font-size:10px;color:#7a7870;line-height:1.6;"></div>
+  </div>
 </div>
 
 <script>
@@ -124,33 +129,31 @@
 var S = {
   conv: null,
   guestCtx: null,
+  lastMsgId: null,
   settings: { scriptUrl:'', hotelName:'Rocacorba Cycling', language:'English', tone:'warm and personal' }
 };
 
-// ── JSONP helper — bypasses CORS for Apps Script ──────────────
+// ── JSONP — bypasses CORS for Apps Script ─────────────────────
 function jsonp(baseUrl, params, onSuccess, onError) {
   var cbName = 'hd_' + Date.now() + '_' + Math.floor(Math.random()*9999);
   var qs = Object.keys(params).map(function(k){
     return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);
   }).join('&');
-
   var timer = setTimeout(function(){
     delete window[cbName];
     if (onError) onError('Timeout');
   }, 12000);
-
   window[cbName] = function(data){
     clearTimeout(timer);
     delete window[cbName];
     if (s && s.parentNode) s.parentNode.removeChild(s);
     onSuccess(data);
   };
-
   var s = document.createElement('script');
   s.onerror = function(){
     clearTimeout(timer);
     delete window[cbName];
-    if (onError) onError('Load error');
+    if (onError) onError('Script load failed');
   };
   s.src = baseUrl + '?' + qs + '&callback=' + cbName;
   document.head.appendChild(s);
@@ -168,10 +171,10 @@ function showTab(name) {
 
 // ── Settings ──────────────────────────────────────────────────
 function saveSettings() {
-  S.settings.scriptUrl  = document.getElementById('cfg-script').value.trim();
-  S.settings.hotelName  = document.getElementById('cfg-hotel').value.trim() || 'our hotel';
-  S.settings.language   = document.getElementById('cfg-lang').value;
-  S.settings.tone       = document.getElementById('cfg-tone').value;
+  S.settings.scriptUrl = document.getElementById('cfg-script').value.trim();
+  S.settings.hotelName = document.getElementById('cfg-hotel').value.trim() || 'Rocacorba Cycling';
+  S.settings.language  = document.getElementById('cfg-lang').value;
+  S.settings.tone      = document.getElementById('cfg-tone').value;
   try { localStorage.setItem('hd_cfg', JSON.stringify(S.settings)); } catch(e){}
   document.getElementById('save-status').innerHTML = '<div class="status ok">✓ Saved</div>';
   setTimeout(function(){ document.getElementById('save-status').innerHTML=''; }, 2000);
@@ -194,31 +197,28 @@ function loadSettings() {
 // ── Connection test ───────────────────────────────────────────
 function testConn() {
   var url = document.getElementById('cfg-script').value.trim();
-  if (!url) { showStatus('conn-status', false, 'Enter your Apps Script URL first.'); return; }
+  if (!url) { showStatus('conn-status', false, 'Enter Apps Script URL first.'); return; }
   S.settings.scriptUrl = url;
   document.getElementById('conn-status').innerHTML = '<div class="loading"><div class="spinner"></div> Testing…</div>';
   jsonp(url, {action:'ping'}, function(j){
     var ok = j && j.data && j.data.message;
     showStatus('conn-status', ok, ok ? '✓ '+j.data.message : '✗ Unexpected response');
-    document.getElementById('sdk-dot').style.background = ok ? '#2d6a4f' : '#c0392b';
-  }, function(e){ showStatus('conn-status', false, '✗ Error: '+e); });
+  }, function(e){ showStatus('conn-status', false, '✗ '+e); });
 }
 
 function showStatus(id, ok, msg) {
   document.getElementById(id).innerHTML = '<div class="status '+(ok?'ok':'err')+'">'+msg+'</div>';
 }
 
-// ── Guest lookup via JSONP ────────────────────────────────────
+// ── Guest lookup ──────────────────────────────────────────────
 function lookupGuest(fullName) {
   if (!S.settings.scriptUrl || !fullName) return;
   var parts = fullName.trim().split(/\s+/);
   var surname = parts[parts.length-1];
-
   document.getElementById('sheet-none').style.display    = 'none';
   document.getElementById('sheet-context').style.display = 'none';
   document.getElementById('sheet-loading').style.display = 'flex';
-
-  jsonp(S.settings.scriptUrl, {action:'guestLookup', name: surname}, function(j){
+  jsonp(S.settings.scriptUrl, {action:'guestLookup', name:surname}, function(j){
     document.getElementById('sheet-loading').style.display = 'none';
     if (j && j.data && j.data.found) {
       S.guestCtx = j.data;
@@ -228,7 +228,6 @@ function lookupGuest(fullName) {
       S.guestCtx = null;
       document.getElementById('sheet-none').style.display = 'block';
       document.getElementById('sheet-none').textContent = '"'+surname+'" not found in calendar.';
-      document.getElementById('guest-card').innerHTML = '<div class="no-guest">Not found in calendar.</div>';
     }
   }, function(){
     document.getElementById('sheet-loading').style.display = 'none';
@@ -246,20 +245,19 @@ function showGuestContext(d) {
   if (d.nights)   lines.push('Nights: '+d.nights);
   if (d.notes)    lines.push('Notes: '+d.notes);
   var box = document.getElementById('sheet-context');
-  box.textContent = lines.join('\n');
+  box.textContent = lines.join('\n') || 'Found in calendar (no details)';
   box.style.display = 'block';
 }
 
 function showGuestCard(d) {
   document.getElementById('guest-card').innerHTML =
     '<div class="guest-card">'+
-    (d.room     ? '<strong>Room:</strong> '+esc(d.room)+'<br>':'') +
-    (d.group    ? '<strong>Section:</strong> '+esc(d.group)+'<br>':'') +
-    (d.checkIn  ? '<strong>Check-in:</strong> '+esc(d.checkIn)+'<br>':'') +
-    (d.checkOut ? '<strong>Check-out:</strong> '+esc(d.checkOut)+'<br>':'') +
-    (d.nights   ? '<strong>Nights:</strong> '+esc(String(d.nights))+'<br>':'') +
-    (d.notes    ? '<strong>Notes:</strong> '+esc(d.notes):'') +
-    '</div>';
+    (d.room     ? '<strong>Room:</strong> '+esc(d.room)+'<br>':'')+
+    (d.group    ? '<strong>Section:</strong> '+esc(d.group)+'<br>':'')+
+    (d.checkIn  ? '<strong>Check-in:</strong> '+esc(d.checkIn)+'<br>':'')+
+    (d.checkOut ? '<strong>Check-out:</strong> '+esc(d.checkOut)+'<br>':'')+
+    (d.nights   ? '<strong>Nights:</strong> '+esc(String(d.nights))+'<br>':'')+
+    (d.notes    ? '<strong>Notes:</strong> '+esc(d.notes):'')+'</div>';
 }
 
 function manualLookup() {
@@ -309,33 +307,25 @@ function generateReply() {
 
   var prompt =
     'You are the front desk manager at '+S.settings.hotelName+', a rural cycling and activity hotel.\n'+
-    'Write a '+S.settings.tone+' reply email to a guest in '+S.settings.language+'.\n\n'+
-    'Guest name: '+(guestName||'(unknown)')+'\n'+
-    'Email subject: '+(subject||'(unknown)')+'\n'+
-    (lastMsg ? 'Guest message:\n"""\n'+lastMsg.substring(0,800)+'\n"""\n\n' : '')+
-    (ctx.length>0 ? 'Booking info from our system:\n'+ctx.join('\n')+'\n\n' : 'No booking found in system for this guest.\n\n')+
-    'Instructions:\n'+
-    '- Be '+S.settings.tone+', never robotic\n'+
-    '- Keep it concise (under 150 words)\n'+
-    '- Address guest by first name if known\n'+
-    '- Reference their booking details naturally if available\n'+
-    '- Sign off as "The Rocacorba Team"\n'+
-    '- Write only the email body, no subject line';
+    'Write a '+S.settings.tone+' reply email in '+S.settings.language+'.\n\n'+
+    'Guest: '+(guestName||'(unknown)')+'\n'+
+    'Subject: '+(subject||'(unknown)')+'\n'+
+    (lastMsg ? 'Their message:\n"""\n'+lastMsg.substring(0,800)+'\n"""\n\n' : '')+
+    (ctx.length>0 ? 'Booking info from our system:\n'+ctx.join('\n')+'\n\n' : 'No booking found in system.\n\n')+
+    'Rules: Be '+S.settings.tone+'. Under 150 words. Address by first name if known. '+
+    'Reference booking naturally if available. Sign off as "The Rocacorba Team". '+
+    'Write only the email body, no subject line.';
 
   fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:1000,
-      messages:[{role:'user', content:prompt}]
-    })
+    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{role:'user',content:prompt}] })
   })
   .then(function(r){ return r.json(); })
   .then(function(j){
     document.getElementById('draft-loading').style.display = 'none';
     document.getElementById('gen-btn').disabled = false;
-    var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate reply.';
+    var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate.';
     document.getElementById('draft-text').value = text;
     document.getElementById('insert-btn').style.display = 'block';
     document.getElementById('regen-btn').style.display = 'block';
@@ -351,17 +341,20 @@ function generateReply() {
 function insertReply() {
   var text = document.getElementById('draft-text').value;
   if (!text) return;
-  if (window.FrontPlugin && window.FrontPlugin.compose) {
-    window.FrontPlugin.compose.setDraft({ content: text });
-  } else if (window.Front && window.Front.compose) {
-    window.Front.compose.setDraft({ content: text });
-  } else {
-    navigator.clipboard.writeText(text).then(function(){
-      var b = document.getElementById('insert-btn');
-      b.textContent = '✓ Copied to clipboard';
-      setTimeout(function(){ b.textContent = '↑ Insert into Front composer'; }, 2500);
-    });
+  if (S.lastMsgId && window.Front) {
+    try {
+      Front.compose.setDraft({ content: text, replyOptions: { type:'reply', originalMessageId: S.lastMsgId } });
+      return;
+    } catch(e) {}
   }
+  // Fallback: copy to clipboard
+  navigator.clipboard.writeText(text).then(function(){
+    var b = document.getElementById('insert-btn');
+    b.textContent = '✓ Copied to clipboard';
+    setTimeout(function(){ b.textContent = '↑ Insert into composer'; }, 2500);
+  }).catch(function(){
+    document.getElementById('insert-btn').textContent = 'Select text above and copy manually';
+  });
 }
 
 // ── Utilities ─────────────────────────────────────────────────
@@ -369,76 +362,56 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Boot — load Front SDK correctly ──────────────────────────
+function dbg(msg) {
+  var el = document.getElementById('debug-info');
+  if (el) el.innerHTML += msg + '<br>';
+}
+
+// ── Boot ──────────────────────────────────────────────────────
 window.addEventListener('load', function(){
   loadSettings();
+  dbg('Page loaded. Checking for Front SDK…');
 
-  // Dynamically load the Front Plugin SDK
-  var sdkScript = document.createElement('script');
-  sdkScript.src = 'https://dl.frontapp.com/libs/plugin-sdk/1.5.2/front.js';
-  sdkScript.onload = function() {
-    initFrontSDK();
-  };
-  sdkScript.onerror = function() {
-    // Try fallback CDN
-    var fallback = document.createElement('script');
-    fallback.src = 'https://unpkg.com/@frontapp/plugin-sdk@latest/dist/front.js';
-    fallback.onload = initFrontSDK;
-    fallback.onerror = function() {
-      document.getElementById('conv-info').textContent = 'SDK failed to load. Check network.';
-    };
-    document.head.appendChild(fallback);
-  };
-  document.head.appendChild(sdkScript);
+  if (typeof Front === 'undefined') {
+    dbg('window.Front not found after load.');
+    document.getElementById('conv-info').textContent = 'Front SDK not detected.';
+    document.getElementById('sdk-dot').style.background = '#e05c5c';
+    return;
+  }
+
+  dbg('Front SDK found. Subscribing to context updates…');
+  document.getElementById('sdk-dot').style.background = '#c8a96e';
+
+  Front.contextUpdates.subscribe(function(context) {
+    dbg('Context update received: type='+context.type);
+
+    if (!context || !context.conversation) {
+      document.getElementById('conv-info').textContent = 'No conversation selected.';
+      return;
+    }
+
+    var conv = context.conversation;
+    S.conv = conv;
+    document.getElementById('sdk-dot').style.background = '#2d6a4f';
+
+    // Get last message ID for reply insertion
+    if (conv.messages && conv.messages.length > 0) {
+      S.lastMsgId = conv.messages[conv.messages.length-1].id;
+    }
+
+    var contact = conv.contact || conv.recipient || null;
+    var name    = contact ? (contact.name || contact.handle || 'Unknown') : 'Unknown';
+    var subject = conv.subject || '(no subject)';
+
+    dbg('Conversation: '+name+' / '+subject);
+
+    document.getElementById('conv-info').innerHTML =
+      '<strong>'+esc(name)+'</strong><br>'+
+      '<span style="color:#7a7870;font-size:11px;">'+esc(subject)+'</span>';
+
+    lookupGuest(name);
+  });
 });
-
-function initFrontSDK() {
-  // Try the newer @frontapp/plugin-sdk API first
-  if (window.FrontPlugin) {
-    document.getElementById('sdk-dot').style.background = '#c8a96e';
-    window.FrontPlugin.contextUpdates.subscribe(function(ctx){
-      handleFrontContext(ctx);
-    });
-    return;
-  }
-
-  // Try the older Front global
-  if (window.Front) {
-    document.getElementById('sdk-dot').style.background = '#c8a96e';
-    window.Front.contextUpdates.subscribe(function(ctx){
-      handleFrontContext(ctx);
-    });
-    return;
-  }
-
-  document.getElementById('conv-info').textContent = 'Front SDK not available. Ensure plugin is opened inside Front.';
-  document.getElementById('sdk-dot').style.background = '#e05c5c';
-}
-
-function handleFrontContext(ctx) {
-  if (!ctx) return;
-
-  // Handle both SDK versions
-  var conv = ctx.conversation || (ctx.type === 'conversation' ? ctx : null);
-  if (!conv) {
-    document.getElementById('conv-info').textContent = 'No conversation selected.';
-    return;
-  }
-
-  S.conv = conv;
-  document.getElementById('sdk-dot').style.background = '#2d6a4f';
-
-  var contact = conv.contact || (conv.recipient ? conv.recipient : null);
-  var name    = contact ? (contact.name || contact.handle || 'Unknown') : 'Unknown';
-  var subject = conv.subject || '(no subject)';
-
-  document.getElementById('conv-info').innerHTML =
-    '<strong>'+esc(name)+'</strong><br>'+
-    '<span style="color:#7a7870;font-size:11px;">'+esc(subject)+'</span>';
-
-  // Auto-lookup in calendar
-  lookupGuest(name);
-}
 </script>
 </body>
 </html>
