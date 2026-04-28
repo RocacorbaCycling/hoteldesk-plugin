@@ -154,7 +154,7 @@ function jsonp(baseUrl, params, onSuccess, onError) {
   var timer = setTimeout(function(){
     delete window[cb];
     if (onError) onError('Timeout');
-  }, 12000);
+  }, 30000);
   window[cb] = function(data){
     clearTimeout(timer);
     delete window[cb];
@@ -315,6 +315,23 @@ function generateReply() {
     '- Sign off as "' + S.settings.signoff + '"\n' +
     '- Write ONLY the email body — no subject line, no extra commentary';
 
+  // Call Claude via Apps Script proxy (avoids Front CSP block)
+  jsonp(S.settings.scriptUrl, {
+    action: 'claudeReply',
+    prompt: prompt
+  }, function(j) {
+    document.getElementById('draft-loading').style.display = 'none';
+    document.getElementById('gen-btn').disabled = false;
+    var text = (j && j.data && j.data.reply) ? j.data.reply : (j && j.data && j.data.error ? 'Error: ' + j.data.error : 'Could not generate reply.');
+    document.getElementById('draft-text').value = text;
+    document.getElementById('copy-btn').style.display = 'block';
+    document.getElementById('regen-btn').style.display = 'block';
+  }, function(e) {
+    document.getElementById('draft-loading').style.display = 'none';
+    document.getElementById('gen-btn').disabled = false;
+    document.getElementById('draft-text').value = 'Error: ' + e;
+  });
+  return;
   fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
