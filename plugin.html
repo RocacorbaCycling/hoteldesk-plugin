@@ -12,11 +12,12 @@
   .dot { width: 6px; height: 6px; border-radius: 50%; background: #c8a96e; flex-shrink: 0; }
   .section { padding: 12px 14px; border-bottom: 1px solid #e8e6e0; }
   .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #7a7870; margin-bottom: 6px; }
-  .context-box { background: #fff; border: 1px solid #e0ddd6; border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #4a4a48; line-height: 1.7; white-space: pre-wrap; max-height: 130px; overflow-y: auto; }
+  .context-box { background: #fff; border: 1px solid #e0ddd6; border-left: 3px solid #c8a96e; border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #4a4a48; line-height: 1.7; white-space: pre-wrap; max-height: 130px; overflow-y: auto; }
   .no-guest { font-size: 12px; color: #7a7870; font-style: italic; padding: 4px 0; }
-  textarea { width: 100%; background: #fff; border: 1px solid #e0ddd6; border-radius: 6px; padding: 10px 12px; font-size: 12px; font-family: inherit; color: #1a1a18; line-height: 1.7; resize: vertical; min-height: 150px; outline: none; margin-bottom: 8px; }
+  textarea { width: 100%; background: #fff; border: 1px solid #e0ddd6; border-radius: 6px; padding: 10px 12px; font-size: 12px; font-family: inherit; color: #1a1a18; line-height: 1.7; resize: vertical; min-height: 160px; outline: none; margin-bottom: 8px; }
   textarea:focus { border-color: #c8a96e; }
-  .btn { width: 100%; padding: 9px 14px; border-radius: 5px; font-size: 12px; font-family: inherit; cursor: pointer; letter-spacing: 0.03em; border: none; margin-bottom: 6px; }
+  .btn { width: 100%; padding: 9px 14px; border-radius: 5px; font-size: 12px; font-family: inherit; cursor: pointer; letter-spacing: 0.03em; border: none; margin-bottom: 6px; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn-primary { background: #1a1a18; color: #c8a96e; }
   .btn-secondary { background: #fff; color: #1a1a18; border: 1px solid #d0cec8; }
@@ -27,15 +28,15 @@
   .status { font-size: 11px; padding: 6px 10px; border-radius: 4px; margin-top: 6px; }
   .ok  { background: #d4edda; color: #1a5c2e; }
   .err { background: #fde8e8; color: #7a1a1a; }
-  .warn { background: #fff3cd; color: #856404; }
   .cfg-input { width: 100%; padding: 7px 10px; border: 1px solid #e0ddd6; border-radius: 5px; font-size: 12px; font-family: inherit; background: #fff; color: #1a1a18; outline: none; margin-bottom: 8px; }
   .cfg-input:focus { border-color: #c8a96e; }
   .tab-bar { display: flex; border-bottom: 1px solid #e8e6e0; background: #fff; }
   .tab { flex: 1; padding: 9px 6px; text-align: center; font-size: 11px; color: #7a7870; cursor: pointer; border-bottom: 2px solid transparent; }
   .tab.active { color: #1a1a18; border-bottom-color: #c8a96e; }
-  .guest-card { background:#fff; border:1px solid #e0ddd6; border-radius:6px; padding:10px 12px; font-size:11px; line-height:1.8; }
-  .guest-card strong { color:#1a1a18; }
-  #debug-info { font-size:10px; color:#7a7870; line-height:1.8; font-family: monospace; }
+  .search-row { display: flex; gap: 6px; }
+  .search-row input { flex: 1; margin-bottom: 0; }
+  .search-row button { width: auto; padding: 7px 12px; margin-bottom: 0; font-size: 11px; }
+  .found-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(200,169,110,0.15); color: #8a7248; border: 1px solid rgba(200,169,110,0.3); margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -43,49 +44,52 @@
 <div class="header">
   <span class="dot"></span>
   <span class="header-title">HotelDesk AI</span>
-  <span id="sdk-dot" class="dot" style="background:#aaa;"></span>
+  <span id="conn-dot" class="dot" style="background:#aaa;"></span>
 </div>
 
 <div class="tab-bar">
   <div class="tab active" onclick="showTab('compose')">✦ Compose</div>
-  <div class="tab" onclick="showTab('guest')">◈ Guest</div>
   <div class="tab" onclick="showTab('settings')">⚙ Settings</div>
 </div>
 
 <!-- COMPOSE TAB -->
 <div id="tab-compose">
+
+  <!-- Step 1: Guest lookup -->
   <div class="section">
-    <div class="label">Current conversation</div>
-    <div id="conv-info" class="no-guest">Waiting for conversation…</div>
+    <div class="label">Step 1 — Guest name
+      <span id="found-badge" class="found-badge" style="display:none;">✓ found in calendar</span>
+    </div>
+    <div class="search-row">
+      <input class="cfg-input" id="guest-input" placeholder="Type guest surname…" onkeydown="if(event.key==='Enter')lookupGuest()" />
+      <button class="btn btn-primary" onclick="lookupGuest()">Look up</button>
+    </div>
+    <div id="lookup-loading" class="loading" style="display:none;"><div class="spinner"></div> Searching calendar…</div>
+    <div id="lookup-result"></div>
   </div>
-  <div class="section">
-    <div class="label">Guest info from calendar</div>
-    <div id="sheet-loading" class="loading" style="display:none;"><div class="spinner"></div> Looking up guest…</div>
-    <div id="sheet-context" class="context-box" style="display:none;"></div>
-    <div id="sheet-none" class="no-guest">No guest context yet.</div>
+
+  <!-- Calendar context -->
+  <div id="ctx-section" class="section" style="display:none;">
+    <div class="label">Calendar info</div>
+    <div id="ctx-box" class="context-box"></div>
   </div>
+
+  <!-- Step 2: Email context -->
   <div class="section">
-    <div class="label">AI draft reply</div>
+    <div class="label">Step 2 — Paste guest's email (optional)</div>
+    <textarea id="email-input" style="min-height:70px;" placeholder="Paste the guest's message here for a more accurate reply…"></textarea>
+  </div>
+
+  <!-- Step 3: Generate -->
+  <div class="section">
+    <div class="label">Step 3 — Generate reply</div>
     <div id="draft-loading" class="loading" style="display:none;"><div class="spinner"></div> Drafting with Claude…</div>
-    <textarea id="draft-text" placeholder="Click Generate Reply to draft a response…"></textarea>
+    <textarea id="draft-text" placeholder="AI reply will appear here…"></textarea>
     <button class="btn btn-primary" id="gen-btn" onclick="generateReply()">✦ Generate Reply</button>
-    <button class="btn btn-green" id="insert-btn" onclick="insertReply()" style="display:none;">↑ Insert into composer</button>
+    <button class="btn btn-green" id="copy-btn" onclick="copyReply()" style="display:none;">⎘ Copy reply</button>
     <button class="btn btn-secondary" id="regen-btn" onclick="generateReply()" style="display:none;">↻ Regenerate</button>
   </div>
-</div>
 
-<!-- GUEST TAB -->
-<div id="tab-guest" style="display:none;">
-  <div class="section">
-    <div class="label">Guest from calendar</div>
-    <div id="guest-card" class="no-guest">Open a conversation to load guest info.</div>
-  </div>
-  <div class="section">
-    <div class="label">Manual lookup</div>
-    <input class="cfg-input" id="manual-name" placeholder="Enter guest surname…" />
-    <button class="btn btn-primary" onclick="manualLookup()">Look up in calendar</button>
-    <div id="manual-result"></div>
-  </div>
 </div>
 
 <!-- SETTINGS TAB -->
@@ -98,13 +102,17 @@
     <div id="conn-status"></div>
   </div>
   <div class="section">
-    <div class="label">Hotel name</div>
+    <div class="label">Hotel / company name</div>
     <input class="cfg-input" id="cfg-hotel" placeholder="e.g. Rocacorba Cycling" />
   </div>
   <div class="section">
     <div class="label">Reply language</div>
     <select class="cfg-input" id="cfg-lang">
-      <option>English</option><option>Spanish</option><option>Catalan</option><option>French</option><option>German</option>
+      <option>English</option>
+      <option>Spanish</option>
+      <option>Catalan</option>
+      <option>French</option>
+      <option>German</option>
     </select>
   </div>
   <div class="section">
@@ -116,156 +124,56 @@
     </select>
   </div>
   <div class="section">
-    <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
-    <div id="save-status"></div>
+    <div class="label">Your sign-off name</div>
+    <input class="cfg-input" id="cfg-signoff" placeholder="e.g. The Rocacorba Team" />
   </div>
   <div class="section">
-    <div class="label">Debug info</div>
-    <div id="debug-info"></div>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="document.getElementById('debug-info').innerHTML='';">Clear debug</button>
+    <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+    <div id="save-status"></div>
   </div>
 </div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────
 var S = {
-  conv: null,
   guestCtx: null,
-  settings: { scriptUrl:'', hotelName:'Rocacorba Cycling', language:'English', tone:'warm and personal' }
+  settings: {
+    scriptUrl: '',
+    hotelName: 'Rocacorba Cycling',
+    language: 'English',
+    tone: 'warm and personal',
+    signoff: 'The Rocacorba Team'
+  }
 };
 
-// ── Debug logger ──────────────────────────────────────────────
-function dbg(msg) {
-  var el = document.getElementById('debug-info');
-  if (el) el.innerHTML += new Date().toLocaleTimeString() + ' ' + msg + '<br>';
-}
-
-// ── Front SDK via postMessage ─────────────────────────────────
-// The Front Plugin SDK communicates via postMessage to the parent window.
-// We implement the handshake directly without needing to load an external script.
-var frontOrigins = ['https://app.frontapp.com', 'https://front.com'];
-var pluginUid = null;
-
-function sendToFront(payload) {
-  try {
-    window.parent.postMessage(payload, '*');
-  } catch(e) {
-    dbg('postMessage error: ' + e.message);
-  }
-}
-
-// Listen for messages from Front
-window.addEventListener('message', function(event) {
-  // Accept messages from Front or any parent (for safety we log the origin)
-  var data = event.data;
-  if (!data || typeof data !== 'object') return;
-
-  dbg('MSG from ' + event.origin + ': type=' + (data.type || data.name || JSON.stringify(data).substring(0,60)));
-
-  // Front SDK v2 handshake
-  if (data.type === 'FRONT_PLUGIN_HANDSHAKE' || data.name === 'handshake') {
-    pluginUid = data.uid || data.pluginUid;
-    dbg('Handshake received. UID: ' + pluginUid);
-    document.getElementById('sdk-dot').style.background = '#c8a96e';
-    // Acknowledge handshake
-    sendToFront({ type: 'FRONT_PLUGIN_HANDSHAKE_ACK', uid: pluginUid });
-    // Request current context
-    sendToFront({ type: 'FRONT_PLUGIN_GET_CONTEXT', uid: pluginUid });
-    return;
-  }
-
-  // Front SDK v1 style - context update
-  if (data.type === 'context' || data.type === 'FRONT_PLUGIN_CONTEXT') {
-    handleContext(data.payload || data);
-    return;
-  }
-
-  // Some versions send conversation directly
-  if (data.conversation) {
-    handleContext(data);
-    return;
-  }
-
-  // Handle any object that looks like a context update
-  if (data.type && data.type.toLowerCase().includes('context')) {
-    handleContext(data.payload || data);
-    return;
-  }
-});
-
-// Announce ourselves to Front on load
-function initPlugin() {
-  dbg('Sending init to parent...');
-  // Try multiple handshake formats used by different Front SDK versions
-  sendToFront({ type: 'FRONT_PLUGIN_INIT' });
-  sendToFront({ name: 'init' });
-  sendToFront({ type: 'plugin_ready' });
-
-  // Also try the legacy SDK approach
-  if (window.parent !== window) {
-    dbg('Running inside iframe (good). Parent origin ready.');
-  } else {
-    dbg('WARNING: Not inside an iframe. Plugin must run inside Front.');
-  }
-}
-
-function handleContext(ctx) {
-  dbg('Context received: ' + JSON.stringify(ctx).substring(0, 100));
-  document.getElementById('sdk-dot').style.background = '#2d6a4f';
-
-  var conv = ctx.conversation || ctx;
-  if (!conv || !conv.subject) {
-    document.getElementById('conv-info').textContent = 'No conversation selected.';
-    return;
-  }
-
-  S.conv = conv;
-
-  var contact = conv.contact || conv.recipient || null;
-  var name = contact ? (contact.name || contact.handle || 'Unknown') : 'Unknown';
-  var subject = conv.subject || '(no subject)';
-
-  document.getElementById('conv-info').innerHTML =
-    '<strong>' + esc(name) + '</strong><br>' +
-    '<span style="color:#7a7870;font-size:11px;">' + esc(subject) + '</span>';
-
-  lookupGuest(name);
-}
-
-// ── JSONP — bypasses CORS for Apps Script ─────────────────────
+// ── JSONP ─────────────────────────────────────────────────────
 function jsonp(baseUrl, params, onSuccess, onError) {
-  var cbName = 'hd_' + Date.now() + '_' + Math.floor(Math.random()*9999);
+  var cb = 'hd_' + Date.now() + '_' + Math.floor(Math.random()*9999);
   var qs = Object.keys(params).map(function(k){
     return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);
   }).join('&');
   var timer = setTimeout(function(){
-    delete window[cbName];
-    if (onError) onError('Timeout after 12s');
+    delete window[cb];
+    if (onError) onError('Timeout');
   }, 12000);
-  window[cbName] = function(data){
+  window[cb] = function(data){
     clearTimeout(timer);
-    delete window[cbName];
+    delete window[cb];
     if (s && s.parentNode) s.parentNode.removeChild(s);
     onSuccess(data);
   };
   var s = document.createElement('script');
-  s.onerror = function(){
-    clearTimeout(timer);
-    delete window[cbName];
-    if (onError) onError('Script load failed');
-  };
-  s.src = baseUrl + '?' + qs + '&callback=' + cbName;
-  dbg('JSONP: ' + s.src.substring(0,80) + '...');
+  s.onerror = function(){ clearTimeout(timer); delete window[cb]; if (onError) onError('Load error'); };
+  s.src = baseUrl + '?' + qs + '&callback=' + cb;
   document.head.appendChild(s);
 }
 
-// ── Tab switching ─────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────
 function showTab(name) {
-  ['compose','guest','settings'].forEach(function(t){
+  ['compose','settings'].forEach(function(t){
     document.getElementById('tab-'+t).style.display = t===name?'block':'none';
   });
   document.querySelectorAll('.tab').forEach(function(el,i){
-    el.classList.toggle('active', ['compose','guest','settings'][i]===name);
+    el.classList.toggle('active', ['compose','settings'][i]===name);
   });
 }
 
@@ -275,9 +183,12 @@ function saveSettings() {
   S.settings.hotelName = document.getElementById('cfg-hotel').value.trim() || 'Rocacorba Cycling';
   S.settings.language  = document.getElementById('cfg-lang').value;
   S.settings.tone      = document.getElementById('cfg-tone').value;
+  S.settings.signoff   = document.getElementById('cfg-signoff').value.trim() || 'The Rocacorba Team';
   try { localStorage.setItem('hd_cfg', JSON.stringify(S.settings)); } catch(e){}
   document.getElementById('save-status').innerHTML = '<div class="status ok">✓ Saved</div>';
   setTimeout(function(){ document.getElementById('save-status').innerHTML=''; }, 2000);
+  // Update connection dot
+  document.getElementById('conn-dot').style.background = S.settings.scriptUrl ? '#c8a96e' : '#aaa';
 }
 
 function loadSettings() {
@@ -287,137 +198,131 @@ function loadSettings() {
     if (d.hotelName) S.settings.hotelName = d.hotelName;
     if (d.language)  S.settings.language  = d.language;
     if (d.tone)      S.settings.tone      = d.tone;
-    document.getElementById('cfg-script').value = S.settings.scriptUrl;
-    document.getElementById('cfg-hotel').value  = S.settings.hotelName;
-    document.getElementById('cfg-lang').value   = S.settings.language;
-    document.getElementById('cfg-tone').value   = S.settings.tone;
+    if (d.signoff)   S.settings.signoff   = d.signoff;
+    document.getElementById('cfg-script').value  = S.settings.scriptUrl;
+    document.getElementById('cfg-hotel').value   = S.settings.hotelName;
+    document.getElementById('cfg-lang').value    = S.settings.language;
+    document.getElementById('cfg-tone').value    = S.settings.tone;
+    document.getElementById('cfg-signoff').value = S.settings.signoff;
+    document.getElementById('conn-dot').style.background = S.settings.scriptUrl ? '#c8a96e' : '#aaa';
   } catch(e){}
 }
 
-// ── Connection test ───────────────────────────────────────────
 function testConn() {
   var url = document.getElementById('cfg-script').value.trim();
-  if (!url) { showStatus('conn-status', false, 'Enter Apps Script URL first.'); return; }
+  if (!url) { showSt('conn-status', false, 'Enter Apps Script URL first.'); return; }
   S.settings.scriptUrl = url;
   document.getElementById('conn-status').innerHTML = '<div class="loading"><div class="spinner"></div> Testing…</div>';
   jsonp(url, {action:'ping'}, function(j){
     var ok = j && j.data && j.data.message;
-    showStatus('conn-status', ok, ok ? '✓ '+j.data.message : '✗ Unexpected response');
-  }, function(e){ showStatus('conn-status', false, '✗ '+e); });
+    showSt('conn-status', ok, ok ? '✓ '+j.data.message : '✗ Unexpected response');
+    document.getElementById('conn-dot').style.background = ok ? '#2d6a4f' : '#c0392b';
+  }, function(e){ showSt('conn-status', false, '✗ '+e); });
 }
 
-function showStatus(id, ok, msg) {
-  document.getElementById(id).innerHTML = '<div class="status '+(ok?'ok':'err')+'">'+msg+'</div>';
+function showSt(id, ok, msg) {
+  document.getElementById(id).innerHTML = '<div class="status '+(ok?'ok':'err')+'">'+esc(msg)+'</div>';
 }
 
 // ── Guest lookup ──────────────────────────────────────────────
-function lookupGuest(fullName) {
-  if (!S.settings.scriptUrl || !fullName) return;
-  var parts = fullName.trim().split(/\s+/);
-  var surname = parts[parts.length-1];
-  document.getElementById('sheet-none').style.display    = 'none';
-  document.getElementById('sheet-context').style.display = 'none';
-  document.getElementById('sheet-loading').style.display = 'flex';
+function lookupGuest() {
+  var name = document.getElementById('guest-input').value.trim();
+  if (!name) return;
+
+  if (!S.settings.scriptUrl) {
+    document.getElementById('lookup-result').innerHTML =
+      '<div class="status err">Configure Apps Script URL in ⚙ Settings first.</div>';
+    return;
+  }
+
+  document.getElementById('lookup-result').innerHTML = '';
+  document.getElementById('ctx-section').style.display = 'none';
+  document.getElementById('found-badge').style.display = 'none';
+  document.getElementById('lookup-loading').style.display = 'flex';
+  S.guestCtx = null;
+
+  // Try surname first, then full name
+  var parts = name.split(/\s+/);
+  var surname = parts[parts.length - 1];
+
   jsonp(S.settings.scriptUrl, {action:'guestLookup', name:surname}, function(j){
-    document.getElementById('sheet-loading').style.display = 'none';
+    document.getElementById('lookup-loading').style.display = 'none';
     if (j && j.data && j.data.found) {
       S.guestCtx = j.data;
-      showGuestContext(j.data);
-      showGuestCard(j.data);
+      renderContext(j.data);
     } else {
-      S.guestCtx = null;
-      document.getElementById('sheet-none').style.display = 'block';
-      document.getElementById('sheet-none').textContent = '"'+surname+'" not found in calendar.';
+      document.getElementById('lookup-result').innerHTML =
+        '<div class="status err">Not found in calendar. You can still generate a reply.</div>';
     }
   }, function(e){
-    document.getElementById('sheet-loading').style.display = 'none';
-    document.getElementById('sheet-none').style.display = 'block';
-    document.getElementById('sheet-none').textContent = 'Sheet error: '+e;
+    document.getElementById('lookup-loading').style.display = 'none';
+    document.getElementById('lookup-result').innerHTML =
+      '<div class="status err">Sheet error: '+esc(e)+'</div>';
   });
 }
 
-function showGuestContext(d) {
+function renderContext(d) {
+  document.getElementById('found-badge').style.display = 'inline-block';
   var lines = [];
-  if (d.room)     lines.push('Room: '+d.room);
-  if (d.group)    lines.push('Section: '+d.group);
-  if (d.checkIn)  lines.push('Check-in: '+d.checkIn);
-  if (d.checkOut) lines.push('Check-out: '+d.checkOut);
-  if (d.nights)   lines.push('Nights: '+d.nights);
-  if (d.notes)    lines.push('Notes: '+d.notes);
-  var box = document.getElementById('sheet-context');
+  if (d.room)     lines.push('Room: ' + d.room);
+  if (d.group)    lines.push('Section: ' + d.group);
+  if (d.checkIn)  lines.push('Check-in: ' + d.checkIn);
+  if (d.checkOut) lines.push('Check-out: ' + d.checkOut);
+  if (d.nights)   lines.push('Nights: ' + d.nights);
+  if (d.notes)    lines.push('Notes: ' + d.notes);
+  var box = document.getElementById('ctx-box');
   box.textContent = lines.join('\n') || 'Found in calendar.';
-  box.style.display = 'block';
-}
-
-function showGuestCard(d) {
-  document.getElementById('guest-card').innerHTML =
-    '<div class="guest-card">'+
-    (d.room?'<strong>Room:</strong> '+esc(d.room)+'<br>':'')+
-    (d.group?'<strong>Section:</strong> '+esc(d.group)+'<br>':'')+
-    (d.checkIn?'<strong>Check-in:</strong> '+esc(d.checkIn)+'<br>':'')+
-    (d.checkOut?'<strong>Check-out:</strong> '+esc(d.checkOut)+'<br>':'')+
-    (d.nights?'<strong>Nights:</strong> '+esc(String(d.nights))+'<br>':'')+
-    (d.notes?'<strong>Notes:</strong> '+esc(d.notes):'')+'</div>';
-}
-
-function manualLookup() {
-  var name = document.getElementById('manual-name').value.trim();
-  if (!name || !S.settings.scriptUrl) return;
-  document.getElementById('manual-result').innerHTML = '<div class="loading"><div class="spinner"></div> Looking up…</div>';
-  jsonp(S.settings.scriptUrl, {action:'guestLookup', name:name}, function(j){
-    if (j && j.data && j.data.found) {
-      S.guestCtx = j.data;
-      showGuestContext(j.data);
-      showGuestCard(j.data);
-      document.getElementById('manual-result').innerHTML = '<div class="status ok">✓ Found — context loaded</div>';
-      showTab('compose');
-    } else {
-      document.getElementById('manual-result').innerHTML = '<div class="status err">Not found in calendar.</div>';
-    }
-  }, function(){ document.getElementById('manual-result').innerHTML = '<div class="status err">Error reaching sheet.</div>'; });
+  document.getElementById('ctx-section').style.display = 'block';
+  document.getElementById('lookup-result').innerHTML =
+    '<div class="status ok">✓ Guest found in calendar</div>';
 }
 
 // ── Generate reply ────────────────────────────────────────────
 function generateReply() {
+  var guestName = document.getElementById('guest-input').value.trim();
+  var emailText = document.getElementById('email-input').value.trim();
+
   document.getElementById('gen-btn').disabled = true;
   document.getElementById('draft-loading').style.display = 'flex';
-  document.getElementById('insert-btn').style.display = 'none';
+  document.getElementById('copy-btn').style.display = 'none';
   document.getElementById('regen-btn').style.display = 'none';
-
-  var guestName = S.conv && S.conv.contact ? (S.conv.contact.name || S.conv.contact.handle || '') : '';
-  var subject   = S.conv ? (S.conv.subject || '') : '';
-  var lastMsg   = '';
-  if (S.conv && S.conv.messages && S.conv.messages.length > 0) {
-    var msgs = S.conv.messages;
-    lastMsg = msgs[msgs.length-1].text || msgs[msgs.length-1].body || '';
-  }
+  document.getElementById('draft-text').value = '';
 
   var ctx = [];
   if (S.guestCtx && S.guestCtx.found) {
     var g = S.guestCtx;
-    if (g.room)     ctx.push('Room: '+g.room);
-    if (g.group)    ctx.push('Section: '+g.group);
-    if (g.checkIn)  ctx.push('Check-in: '+g.checkIn);
-    if (g.checkOut) ctx.push('Check-out: '+g.checkOut);
-    if (g.nights)   ctx.push('Nights: '+g.nights);
-    if (g.notes)    ctx.push('Calendar notes: '+g.notes);
+    if (g.room)     ctx.push('Room: ' + g.room);
+    if (g.group)    ctx.push('Section: ' + g.group);
+    if (g.checkIn)  ctx.push('Check-in: ' + g.checkIn);
+    if (g.checkOut) ctx.push('Check-out: ' + g.checkOut);
+    if (g.nights)   ctx.push('Nights: ' + g.nights);
+    if (g.notes)    ctx.push('Calendar notes: ' + g.notes);
   }
 
   var prompt =
-    'You are the front desk manager at '+S.settings.hotelName+', a rural cycling and activity hotel in Catalonia.\n'+
-    'Write a '+S.settings.tone+' reply email in '+S.settings.language+'.\n\n'+
-    'Guest: '+(guestName||'(unknown)')+'\n'+
-    'Subject: '+(subject||'(unknown)')+'\n'+
-    (lastMsg?'Their message:\n"""\n'+lastMsg.substring(0,800)+'\n"""\n\n':'')+
-    (ctx.length>0?'Booking info from our calendar:\n'+ctx.join('\n')+'\n\n':'No booking found in system.\n\n')+
-    'Rules: Be '+S.settings.tone+'. Under 150 words. Address by first name. '+
-    'Reference booking details naturally if available. Sign off as "The Rocacorba Team". '+
-    'Write only the email body, no subject line.';
+    'You are the front desk manager at ' + S.settings.hotelName + ', a rural cycling and activity hotel in Catalonia, Spain.\n' +
+    'Write a ' + S.settings.tone + ' reply email in ' + S.settings.language + '.\n\n' +
+    'Guest name: ' + (guestName || '(unknown)') + '\n' +
+    (emailText ? 'Guest message:\n"""\n' + emailText.substring(0, 1000) + '\n"""\n\n' : '') +
+    (ctx.length > 0 ? 'Booking info from our calendar:\n' + ctx.join('\n') + '\n\n' : 'No booking found in our system for this guest.\n\n') +
+    'Instructions:\n' +
+    '- Tone: ' + S.settings.tone + '\n' +
+    '- Language: ' + S.settings.language + '\n' +
+    '- Keep under 150 words\n' +
+    '- Address the guest by first name if you can infer it\n' +
+    '- If booking info is available, reference it naturally\n' +
+    '- If no booking found, still be helpful and warm\n' +
+    '- Sign off as "' + S.settings.signoff + '"\n' +
+    '- Write ONLY the email body — no subject line, no extra commentary';
 
   fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{role:'user',content:prompt}] })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    })
   })
   .then(function(r){ return r.json(); })
   .then(function(j){
@@ -425,45 +330,35 @@ function generateReply() {
     document.getElementById('gen-btn').disabled = false;
     var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate reply.';
     document.getElementById('draft-text').value = text;
-    document.getElementById('insert-btn').style.display = 'block';
+    document.getElementById('copy-btn').style.display = 'block';
     document.getElementById('regen-btn').style.display = 'block';
   })
   .catch(function(e){
     document.getElementById('draft-loading').style.display = 'none';
     document.getElementById('gen-btn').disabled = false;
-    document.getElementById('draft-text').value = 'Error calling Claude: '+e.message;
+    document.getElementById('draft-text').value = 'Error: ' + e.message;
   });
 }
 
-// ── Insert into Front composer ────────────────────────────────
-function insertReply() {
+// ── Copy reply ────────────────────────────────────────────────
+function copyReply() {
   var text = document.getElementById('draft-text').value;
   if (!text) return;
-  // Try postMessage approach to set draft
-  sendToFront({ type: 'FRONT_PLUGIN_SET_DRAFT', payload: { content: text } });
-  sendToFront({ name: 'setDraft', payload: { content: text } });
-  // Fallback: clipboard
   navigator.clipboard.writeText(text).then(function(){
-    var b = document.getElementById('insert-btn');
-    b.textContent = '✓ Copied — paste into composer';
-    setTimeout(function(){ b.textContent = '↑ Insert into composer'; }, 3000);
-  }).catch(function(){});
+    var b = document.getElementById('copy-btn');
+    var orig = b.textContent;
+    b.textContent = '✓ Copied! Paste into Front composer';
+    setTimeout(function(){ b.textContent = orig; }, 3000);
+  });
 }
 
-// ── Utilities ─────────────────────────────────────────────────
+// ── Utils ─────────────────────────────────────────────────────
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Boot ──────────────────────────────────────────────────────
-window.addEventListener('load', function(){
-  loadSettings();
-  dbg('Plugin loaded. Initialising Front SDK handshake…');
-  initPlugin();
-  // Retry handshake after a short delay in case Front isn't ready yet
-  setTimeout(initPlugin, 1000);
-  setTimeout(initPlugin, 3000);
-});
+window.addEventListener('load', loadSettings);
 </script>
 </body>
 </html>
