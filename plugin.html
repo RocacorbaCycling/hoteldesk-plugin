@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HotelDesk AI</title>
-<script src="https://frontapp.com/libs/plugin-sdk/1.0.0/front.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #fafaf9; color: #1a1a18; height: 100vh; overflow-y: auto; }
@@ -28,6 +27,7 @@
   .status { font-size: 11px; padding: 6px 10px; border-radius: 4px; margin-top: 6px; }
   .ok  { background: #d4edda; color: #1a5c2e; }
   .err { background: #fde8e8; color: #7a1a1a; }
+  .warn { background: #fff3cd; color: #856404; }
   .cfg-input { width: 100%; padding: 7px 10px; border: 1px solid #e0ddd6; border-radius: 5px; font-size: 12px; font-family: inherit; background: #fff; color: #1a1a18; outline: none; margin-bottom: 8px; }
   .cfg-input:focus { border-color: #c8a96e; }
   .tab-bar { display: flex; border-bottom: 1px solid #e8e6e0; background: #fff; }
@@ -35,6 +35,7 @@
   .tab.active { color: #1a1a18; border-bottom-color: #c8a96e; }
   .guest-card { background:#fff; border:1px solid #e0ddd6; border-radius:6px; padding:10px 12px; font-size:11px; line-height:1.8; }
   .guest-card strong { color:#1a1a18; }
+  #debug-info { font-size:10px; color:#7a7870; line-height:1.8; font-family: monospace; }
 </style>
 </head>
 <body>
@@ -120,7 +121,8 @@
   </div>
   <div class="section">
     <div class="label">Debug info</div>
-    <div id="debug-info" style="font-size:10px;color:#7a7870;line-height:1.6;"></div>
+    <div id="debug-info"></div>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="document.getElementById('debug-info').innerHTML='';">Clear debug</button>
   </div>
 </div>
 
@@ -129,9 +131,106 @@
 var S = {
   conv: null,
   guestCtx: null,
-  lastMsgId: null,
   settings: { scriptUrl:'', hotelName:'Rocacorba Cycling', language:'English', tone:'warm and personal' }
 };
+
+// ── Debug logger ──────────────────────────────────────────────
+function dbg(msg) {
+  var el = document.getElementById('debug-info');
+  if (el) el.innerHTML += new Date().toLocaleTimeString() + ' ' + msg + '<br>';
+}
+
+// ── Front SDK via postMessage ─────────────────────────────────
+// The Front Plugin SDK communicates via postMessage to the parent window.
+// We implement the handshake directly without needing to load an external script.
+var frontOrigins = ['https://app.frontapp.com', 'https://front.com'];
+var pluginUid = null;
+
+function sendToFront(payload) {
+  try {
+    window.parent.postMessage(payload, '*');
+  } catch(e) {
+    dbg('postMessage error: ' + e.message);
+  }
+}
+
+// Listen for messages from Front
+window.addEventListener('message', function(event) {
+  // Accept messages from Front or any parent (for safety we log the origin)
+  var data = event.data;
+  if (!data || typeof data !== 'object') return;
+
+  dbg('MSG from ' + event.origin + ': type=' + (data.type || data.name || JSON.stringify(data).substring(0,60)));
+
+  // Front SDK v2 handshake
+  if (data.type === 'FRONT_PLUGIN_HANDSHAKE' || data.name === 'handshake') {
+    pluginUid = data.uid || data.pluginUid;
+    dbg('Handshake received. UID: ' + pluginUid);
+    document.getElementById('sdk-dot').style.background = '#c8a96e';
+    // Acknowledge handshake
+    sendToFront({ type: 'FRONT_PLUGIN_HANDSHAKE_ACK', uid: pluginUid });
+    // Request current context
+    sendToFront({ type: 'FRONT_PLUGIN_GET_CONTEXT', uid: pluginUid });
+    return;
+  }
+
+  // Front SDK v1 style - context update
+  if (data.type === 'context' || data.type === 'FRONT_PLUGIN_CONTEXT') {
+    handleContext(data.payload || data);
+    return;
+  }
+
+  // Some versions send conversation directly
+  if (data.conversation) {
+    handleContext(data);
+    return;
+  }
+
+  // Handle any object that looks like a context update
+  if (data.type && data.type.toLowerCase().includes('context')) {
+    handleContext(data.payload || data);
+    return;
+  }
+});
+
+// Announce ourselves to Front on load
+function initPlugin() {
+  dbg('Sending init to parent...');
+  // Try multiple handshake formats used by different Front SDK versions
+  sendToFront({ type: 'FRONT_PLUGIN_INIT' });
+  sendToFront({ name: 'init' });
+  sendToFront({ type: 'plugin_ready' });
+
+  // Also try the legacy SDK approach
+  if (window.parent !== window) {
+    dbg('Running inside iframe (good). Parent origin ready.');
+  } else {
+    dbg('WARNING: Not inside an iframe. Plugin must run inside Front.');
+  }
+}
+
+function handleContext(ctx) {
+  dbg('Context received: ' + JSON.stringify(ctx).substring(0, 100));
+  document.getElementById('sdk-dot').style.background = '#2d6a4f';
+
+  var conv = ctx.conversation || ctx;
+  if (!conv || !conv.subject) {
+    document.getElementById('conv-info').textContent = 'No conversation selected.';
+    return;
+  }
+
+  S.conv = conv;
+
+  var contact = conv.contact || conv.recipient || null;
+  var name = contact ? (contact.name || contact.handle || 'Unknown') : 'Unknown';
+  var subject = conv.subject || '(no subject)';
+
+  document.getElementById('conv-info').innerHTML =
+    '<strong>' + esc(name) + '</strong><br>' +
+    '<span style="color:#7a7870;font-size:11px;">' + esc(subject) + '</span>';
+
+  lookupGuest(name);
+}
 
 // ── JSONP — bypasses CORS for Apps Script ─────────────────────
 function jsonp(baseUrl, params, onSuccess, onError) {
@@ -141,7 +240,7 @@ function jsonp(baseUrl, params, onSuccess, onError) {
   }).join('&');
   var timer = setTimeout(function(){
     delete window[cbName];
-    if (onError) onError('Timeout');
+    if (onError) onError('Timeout after 12s');
   }, 12000);
   window[cbName] = function(data){
     clearTimeout(timer);
@@ -156,6 +255,7 @@ function jsonp(baseUrl, params, onSuccess, onError) {
     if (onError) onError('Script load failed');
   };
   s.src = baseUrl + '?' + qs + '&callback=' + cbName;
+  dbg('JSONP: ' + s.src.substring(0,80) + '...');
   document.head.appendChild(s);
 }
 
@@ -229,10 +329,10 @@ function lookupGuest(fullName) {
       document.getElementById('sheet-none').style.display = 'block';
       document.getElementById('sheet-none').textContent = '"'+surname+'" not found in calendar.';
     }
-  }, function(){
+  }, function(e){
     document.getElementById('sheet-loading').style.display = 'none';
     document.getElementById('sheet-none').style.display = 'block';
-    document.getElementById('sheet-none').textContent = 'Could not reach sheet.';
+    document.getElementById('sheet-none').textContent = 'Sheet error: '+e;
   });
 }
 
@@ -245,19 +345,19 @@ function showGuestContext(d) {
   if (d.nights)   lines.push('Nights: '+d.nights);
   if (d.notes)    lines.push('Notes: '+d.notes);
   var box = document.getElementById('sheet-context');
-  box.textContent = lines.join('\n') || 'Found in calendar (no details)';
+  box.textContent = lines.join('\n') || 'Found in calendar.';
   box.style.display = 'block';
 }
 
 function showGuestCard(d) {
   document.getElementById('guest-card').innerHTML =
     '<div class="guest-card">'+
-    (d.room     ? '<strong>Room:</strong> '+esc(d.room)+'<br>':'')+
-    (d.group    ? '<strong>Section:</strong> '+esc(d.group)+'<br>':'')+
-    (d.checkIn  ? '<strong>Check-in:</strong> '+esc(d.checkIn)+'<br>':'')+
-    (d.checkOut ? '<strong>Check-out:</strong> '+esc(d.checkOut)+'<br>':'')+
-    (d.nights   ? '<strong>Nights:</strong> '+esc(String(d.nights))+'<br>':'')+
-    (d.notes    ? '<strong>Notes:</strong> '+esc(d.notes):'')+'</div>';
+    (d.room?'<strong>Room:</strong> '+esc(d.room)+'<br>':'')+
+    (d.group?'<strong>Section:</strong> '+esc(d.group)+'<br>':'')+
+    (d.checkIn?'<strong>Check-in:</strong> '+esc(d.checkIn)+'<br>':'')+
+    (d.checkOut?'<strong>Check-out:</strong> '+esc(d.checkOut)+'<br>':'')+
+    (d.nights?'<strong>Nights:</strong> '+esc(String(d.nights))+'<br>':'')+
+    (d.notes?'<strong>Notes:</strong> '+esc(d.notes):'')+'</div>';
 }
 
 function manualLookup() {
@@ -274,9 +374,7 @@ function manualLookup() {
     } else {
       document.getElementById('manual-result').innerHTML = '<div class="status err">Not found in calendar.</div>';
     }
-  }, function(){
-    document.getElementById('manual-result').innerHTML = '<div class="status err">Error reaching sheet.</div>';
-  });
+  }, function(){ document.getElementById('manual-result').innerHTML = '<div class="status err">Error reaching sheet.</div>'; });
 }
 
 // ── Generate reply ────────────────────────────────────────────
@@ -306,14 +404,14 @@ function generateReply() {
   }
 
   var prompt =
-    'You are the front desk manager at '+S.settings.hotelName+', a rural cycling and activity hotel.\n'+
+    'You are the front desk manager at '+S.settings.hotelName+', a rural cycling and activity hotel in Catalonia.\n'+
     'Write a '+S.settings.tone+' reply email in '+S.settings.language+'.\n\n'+
     'Guest: '+(guestName||'(unknown)')+'\n'+
     'Subject: '+(subject||'(unknown)')+'\n'+
-    (lastMsg ? 'Their message:\n"""\n'+lastMsg.substring(0,800)+'\n"""\n\n' : '')+
-    (ctx.length>0 ? 'Booking info from our system:\n'+ctx.join('\n')+'\n\n' : 'No booking found in system.\n\n')+
-    'Rules: Be '+S.settings.tone+'. Under 150 words. Address by first name if known. '+
-    'Reference booking naturally if available. Sign off as "The Rocacorba Team". '+
+    (lastMsg?'Their message:\n"""\n'+lastMsg.substring(0,800)+'\n"""\n\n':'')+
+    (ctx.length>0?'Booking info from our calendar:\n'+ctx.join('\n')+'\n\n':'No booking found in system.\n\n')+
+    'Rules: Be '+S.settings.tone+'. Under 150 words. Address by first name. '+
+    'Reference booking details naturally if available. Sign off as "The Rocacorba Team". '+
     'Write only the email body, no subject line.';
 
   fetch('https://api.anthropic.com/v1/messages', {
@@ -325,7 +423,7 @@ function generateReply() {
   .then(function(j){
     document.getElementById('draft-loading').style.display = 'none';
     document.getElementById('gen-btn').disabled = false;
-    var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate.';
+    var text = (j.content && j.content[0]) ? j.content[0].text : 'Could not generate reply.';
     document.getElementById('draft-text').value = text;
     document.getElementById('insert-btn').style.display = 'block';
     document.getElementById('regen-btn').style.display = 'block';
@@ -333,7 +431,7 @@ function generateReply() {
   .catch(function(e){
     document.getElementById('draft-loading').style.display = 'none';
     document.getElementById('gen-btn').disabled = false;
-    document.getElementById('draft-text').value = 'Error: '+e.message;
+    document.getElementById('draft-text').value = 'Error calling Claude: '+e.message;
   });
 }
 
@@ -341,20 +439,15 @@ function generateReply() {
 function insertReply() {
   var text = document.getElementById('draft-text').value;
   if (!text) return;
-  if (S.lastMsgId && window.Front) {
-    try {
-      Front.compose.setDraft({ content: text, replyOptions: { type:'reply', originalMessageId: S.lastMsgId } });
-      return;
-    } catch(e) {}
-  }
-  // Fallback: copy to clipboard
+  // Try postMessage approach to set draft
+  sendToFront({ type: 'FRONT_PLUGIN_SET_DRAFT', payload: { content: text } });
+  sendToFront({ name: 'setDraft', payload: { content: text } });
+  // Fallback: clipboard
   navigator.clipboard.writeText(text).then(function(){
     var b = document.getElementById('insert-btn');
-    b.textContent = '✓ Copied to clipboard';
-    setTimeout(function(){ b.textContent = '↑ Insert into composer'; }, 2500);
-  }).catch(function(){
-    document.getElementById('insert-btn').textContent = 'Select text above and copy manually';
-  });
+    b.textContent = '✓ Copied — paste into composer';
+    setTimeout(function(){ b.textContent = '↑ Insert into composer'; }, 3000);
+  }).catch(function(){});
 }
 
 // ── Utilities ─────────────────────────────────────────────────
@@ -362,55 +455,14 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function dbg(msg) {
-  var el = document.getElementById('debug-info');
-  if (el) el.innerHTML += msg + '<br>';
-}
-
 // ── Boot ──────────────────────────────────────────────────────
 window.addEventListener('load', function(){
   loadSettings();
-  dbg('Page loaded. Checking for Front SDK…');
-
-  if (typeof Front === 'undefined') {
-    dbg('window.Front not found after load.');
-    document.getElementById('conv-info').textContent = 'Front SDK not detected.';
-    document.getElementById('sdk-dot').style.background = '#e05c5c';
-    return;
-  }
-
-  dbg('Front SDK found. Subscribing to context updates…');
-  document.getElementById('sdk-dot').style.background = '#c8a96e';
-
-  Front.contextUpdates.subscribe(function(context) {
-    dbg('Context update received: type='+context.type);
-
-    if (!context || !context.conversation) {
-      document.getElementById('conv-info').textContent = 'No conversation selected.';
-      return;
-    }
-
-    var conv = context.conversation;
-    S.conv = conv;
-    document.getElementById('sdk-dot').style.background = '#2d6a4f';
-
-    // Get last message ID for reply insertion
-    if (conv.messages && conv.messages.length > 0) {
-      S.lastMsgId = conv.messages[conv.messages.length-1].id;
-    }
-
-    var contact = conv.contact || conv.recipient || null;
-    var name    = contact ? (contact.name || contact.handle || 'Unknown') : 'Unknown';
-    var subject = conv.subject || '(no subject)';
-
-    dbg('Conversation: '+name+' / '+subject);
-
-    document.getElementById('conv-info').innerHTML =
-      '<strong>'+esc(name)+'</strong><br>'+
-      '<span style="color:#7a7870;font-size:11px;">'+esc(subject)+'</span>';
-
-    lookupGuest(name);
-  });
+  dbg('Plugin loaded. Initialising Front SDK handshake…');
+  initPlugin();
+  // Retry handshake after a short delay in case Front isn't ready yet
+  setTimeout(initPlugin, 1000);
+  setTimeout(initPlugin, 3000);
 });
 </script>
 </body>
